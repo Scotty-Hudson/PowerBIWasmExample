@@ -1,0 +1,68 @@
+﻿@page "/powerbireport"
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject HttpClient Http
+@using PowerBIWasmExample.Shared
+
+<PageTitle>Power BI Report</PageTitle>
+
+<h1>Power BI Embedding Demo</h1>
+
+@if (reportViewModel is null)
+{   
+    <label>Retrieving report information...</label>
+    <br/>
+}
+@if (!String.IsNullOrEmpty(errorMessage))
+{
+     <label style="font-weight:700">Cannot embed Power BI Report:</label>
+     <span>@errorMessage</span>
+}
+
+<div @ref="@PowerBIElement" style="height:800px" />
+
+@code {
+    private string errorMessage = string.Empty;
+
+    private ElementReference PowerBIElement;
+    private IJSObjectReference? embedModule;
+    private EmbeddedReportViewModel? reportViewModel;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try
+        {
+            if (firstRender)
+            {
+                var embedModuleTask = JS.InvokeAsync<IJSObjectReference>("import", "./scripts/powerbi-embed.js");
+                var reportViewModelTask = Http.GetFromJsonAsync<EmbeddedReportViewModel>("api/PowerBI");
+                embedModule = await embedModuleTask;
+                reportViewModel = await reportViewModelTask;
+                StateHasChanged();
+            }
+            else if (embedModule is not null && reportViewModel is not null)
+            {
+                errorMessage = string.Empty;
+                await embedModule.InvokeVoidAsync("embedReport",
+                    PowerBIElement,
+                    reportViewModel.Id,
+                    reportViewModel.EmbedUrl,
+                    reportViewModel.Token);
+            }
+            else 
+            {
+                errorMessage = "The report could not be accessed";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;            
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (embedModule is not null)
+            await embedModule.DisposeAsync();
+    }
+}
